@@ -1,5 +1,6 @@
 package org.kasparov;
 
+import com.github.bhlangonijr.chesslib.Side;
 import com.github.bhlangonijr.chesslib.move.Move;
 import org.java_websocket.WebSocket;
 
@@ -11,9 +12,13 @@ public class KasparovMove {
 
     private Move move;
 
-    public KasparovMove(WebSocket uuid, Move move) {
+    public KasparovMove(WebSocket uuid, String san, KasparovGameState state) {
         this.uuid = uuid;
-        this.move = move;
+
+        //This statement allows an illegal state, but in cases of illegal state, the results are dropped
+        Side side = (state == KasparovGameState.White) ? Side.WHITE : Side.BLACK;
+
+        this.move = new Move(san, side);
     }
 
     public WebSocket getUuid() {
@@ -23,4 +28,5 @@ public class KasparovMove {
     public Move getMove() {
         return move;
     }
+
 }

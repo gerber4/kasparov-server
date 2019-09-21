@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.HashSet;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -45,15 +46,15 @@ public class KasparovServer extends WebSocketServer {
         conn.send(message);
     }
 
-    void setBoard(char[][] pieceArray) {
-        String pieceJSON = new Gson().toJson(pieceArray);
-        String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": \"%s\"}}", pieceJSON);
+    void setBoard(char[][] boardArray) {
+        String boardJSON = new Gson().toJson(boardArray);
+        String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", boardJSON);
         broadcast(message);
     }
 
-    void setBoard(WebSocket conn, char[][] pieceArray) {
-        String pieceJSON = new Gson().toJson(pieceArray);
-        String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", pieceJSON);
+    void setBoard(WebSocket conn, char[][] boardArray) {
+        String boardJSON = new Gson().toJson(boardArray);
+        String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", boardJSON);
         conn.send(message);
     }
 
@@ -82,8 +83,30 @@ public class KasparovServer extends WebSocketServer {
     }
 
     @Override
-    public void onMessage(WebSocket conn, String message) {
-        System.out.println("received message from "	+ conn.getRemoteSocketAddress() + ": " + message);
+    public void onMessage(WebSocket conn, String messageString) {
+        System.out.println("received message from "	+ conn.getRemoteSocketAddress() + ": " + messageString);
+        JsonObject message = new Gson().fromJson(messageString, JsonObject.class);
+
+        String msgType = message.get("msgType").getAsString();
+        switch (msgType) {
+
+            case "SendMove":
+                String san = message.get("msg").getAsJsonObject().get("move").getAsString();
+                KasparovGameState state = engine.getState();
+                KasparovMove move = new KasparovMove(conn, san, state);
+
+                if (conn == kasparov) {
+                    engine.makeMoveKasparov(move);
+                } else {
+                    engine.makeMoveWorld(conn, move);
+                }
+                break;
+
+            default:
+                throw new IllegalStateException("Unknown msgType: " + msgType);
+
+        }
+
     }
 
     @Override

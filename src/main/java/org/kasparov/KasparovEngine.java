@@ -59,18 +59,16 @@ public class KasparovEngine implements Runnable {
      */
     void makeMoveKasparov(KasparovMove move) {
         if (state == KasparovGameState.White) {
-            boolean success = board.doMove(move.getMove(), true);
+            boolean success = false;
+
+            try {
+                success = board.isMoveLegal(move.getMove(), true);
+            } catch (RuntimeException e) {
+                //squash
+            }
 
             if (success) {
-                if (board.isMated()) {
-                    setWhiteWins();
-                } else if (board.isDraw()) {
-                    setStalemate();
-                } else {
-                    setTurnBlack();
-                }
-
-                updateView();
+                setTurnBlack(move);
             }
         }
     }
@@ -84,10 +82,6 @@ public class KasparovEngine implements Runnable {
         }
     }
 
-    private void updateView() {
-        char[][] view = getBoard();
-        server.setBoard(view);
-    }
 
     /**
      * Transitions from the setup state to the White state
@@ -110,15 +104,24 @@ public class KasparovEngine implements Runnable {
     /**
      * Transition from the white turn to the black turn
      */
-    private void setTurnBlack() {
+    private void setTurnBlack(KasparovMove move) {
         if (state != KasparovGameState.White) {
             throw new IllegalStateException("setTurnBlack called when state is not white");
         }
 
-        state = KasparovGameState.Black;
-        server.setState(state);
-        moveQueue = new LinkedBlockingQueue<>();
-        moves = new HashMap<>();
+        board.doMove(move.getMove());
+
+        if (board.isMated()) {
+            setWhiteWins();
+        } else if (board.isDraw()) {
+            setStalemate();
+        } else {
+            state = KasparovGameState.Black;
+            server.setState(state);
+            server.setBoard(getBoard());
+            moveQueue = new LinkedBlockingQueue<>();
+            moves = new HashMap<>();
+        }
     }
 
     /**
@@ -130,7 +133,6 @@ public class KasparovEngine implements Runnable {
         }
 
         state = KasparovGameState.WhiteWins;
-        server.setState(state);
     }
 
     /**
@@ -138,7 +140,6 @@ public class KasparovEngine implements Runnable {
      */
     private void setStalemate() {
         state = KasparovGameState.Stalemate;
-        server.setState(state);
     }
 
     /**
@@ -150,7 +151,6 @@ public class KasparovEngine implements Runnable {
         }
 
         state = KasparovGameState.BlackWins;
-        server.setState(state);
     }
 
     @Override
