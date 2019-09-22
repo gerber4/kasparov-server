@@ -1,20 +1,21 @@
 package org.kasparov;
 
-import com.github.bhlangonijr.chesslib.Board;
-
-import java.net.InetSocketAddress;
+import com.github.bhlangonijr.chesslib.move.*;
 import org.java_websocket.WebSocket;
 
-import java.util.HashMap;
+import java.net.InetSocketAddress;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Main class of the Kasparov vs. the world game.
  */
 public class KasparovEngine implements Runnable {
 
-    private Board board;
+    private KasparovBoard board;
 
     private KasparovServer server;
 
@@ -28,7 +29,7 @@ public class KasparovEngine implements Runnable {
 
     private KasparovEngine() {
         this.state = KasparovGameState.Setup;
-        this.board = new Board();
+        this.board = new KasparovBoard();
         this.moveQueue = new LinkedBlockingQueue<>();
         this.moves = new HashMap<>();
     }
@@ -37,21 +38,12 @@ public class KasparovEngine implements Runnable {
         return state;
     }
 
-    /**
-     * Get a simplified SAN string representing the current board stored in a 2D array
-     */
     char[][] getBoard() {
-        String board = this.board.toString();
-        board = board.replace("\n", "").replace("\r", "");
-        board = board.substring(0, 64);
-        char[] boardArray = board.toCharArray();
-        char[][] resultArray = new char[8][8];
+        return board.getAsArray();
+    }
 
-        for (int row = 0; row < 8; row++) {
-            System.arraycopy(boardArray, 8 * (7 - row), resultArray[row], 0, 8);
-        }
-
-        return resultArray;
+    boolean isEnded() {
+        return state == KasparovGameState.WhiteWins || state == KasparovGameState.BlackWins || state == KasparovGameState.Stalemate;
     }
 
     /**
@@ -59,16 +51,10 @@ public class KasparovEngine implements Runnable {
      */
     void makeMoveKasparov(KasparovMove move) {
         if (state == KasparovGameState.White) {
-            boolean success = false;
-
-            try {
-                success = board.isMoveLegal(move.getMove(), true);
-            } catch (RuntimeException e) {
-                //squash
-            }
-
-            if (success) {
+            if (board.isMoveLegal(move.getMove())) {
                 setTurnBlack(move);
+            } else {
+                System.out.println("Kasparov sent illegal move: " + move.getMove());
             }
         }
     }
@@ -82,11 +68,10 @@ public class KasparovEngine implements Runnable {
         }
     }
 
-
     /**
      * Transitions from the setup state to the White state
      *
-     * @return true if game started
+     * @return true if game started, false if game not ready to start
      */
     boolean startGame() {
         if (server.getKasparov() == null) {
@@ -96,7 +81,6 @@ public class KasparovEngine implements Runnable {
         } else {
             state = KasparovGameState.White;
             server.setState(state);
-
             return true;
         }
     }
@@ -112,16 +96,63 @@ public class KasparovEngine implements Runnable {
         board.doMove(move.getMove());
 
         if (board.isMated()) {
+            System.out.println("THIS SHOULD BE HIT?!?!?");
             setWhiteWins();
         } else if (board.isDraw()) {
             setStalemate();
         } else {
             state = KasparovGameState.Black;
             server.setState(state);
-            server.setBoard(getBoard());
-            moveQueue = new LinkedBlockingQueue<>();
-            moves = new HashMap<>();
+            server.setBoard(board.getAsArray());
         }
+
+        this.moveQueue = new LinkedBlockingQueue<>();
+        this.moves = new HashMap<>();
+
+        synchronized (timer.getLock()) {
+            timer.getLock().notify();
+        }
+    }
+
+    /**
+     * Transition from the black turn to the white turn. If the most popular move is illegal, then a random move is performed
+     */
+    void setTurnWhite() {
+        List<Move> moves = this.moves.values()
+                .stream()
+                .map(KasparovMove::getMove)
+                .collect(Collectors.toList());
+
+        Optional<Map.Entry<Move,Long>> optionalMove = moves.stream()
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
+                .entrySet()
+                .stream()
+                .max(Comparator.comparing(Map.Entry::getValue));
+
+        Move move;
+        if (optionalMove.isPresent()) {
+            if (board.isMoveLegal(optionalMove.get().getKey())) {
+                move = optionalMove.get().getKey();
+            } else {
+                move = board.getRandomMove();
+            }
+        } else {
+            move = board.getRandomMove();
+        }
+
+        board.doMove(move);
+
+        if (board.isMated()) {
+            System.out.println("THIS SHOULD BE HIT?!?!?");
+            setBlackWins();
+        } else if (board.isDraw()) {
+            setStalemate();
+        } else {
+            state = KasparovGameState.White;
+            server.setState(state);
+            server.setBoard(board.getAsArray());
+        }
+
     }
 
     /**
@@ -131,15 +162,9 @@ public class KasparovEngine implements Runnable {
         if (state != KasparovGameState.White) {
             throw new IllegalStateException("setWhiteWins called when state is not white");
         }
-
         state = KasparovGameState.WhiteWins;
-    }
-
-    /**
-     * Transition to stalemate state
-     */
-    private void setStalemate() {
-        state = KasparovGameState.Stalemate;
+        server.setState(state);
+        server.setBoard(board.getAsArray());
     }
 
     /**
@@ -149,10 +174,24 @@ public class KasparovEngine implements Runnable {
         if (state != KasparovGameState.Black) {
             throw new IllegalStateException("setBlackWins called when state is not black");
         }
-
         state = KasparovGameState.BlackWins;
+        server.setState(state);
+        server.setBoard(board.getAsArray());
     }
 
+    /**
+     * Transition to stalemate state
+     */
+    private void setStalemate() {
+        state = KasparovGameState.Stalemate;
+        server.setState(state);
+        server.setBoard(board.getAsArray());
+    }
+
+
+    /**
+     * Sets up all the required threads, and then manages all incoming moves
+     */
     @Override
     public void run() {
         String host = "localhost";
@@ -162,11 +201,24 @@ public class KasparovEngine implements Runnable {
         Thread serverThread = new Thread(server);
         serverThread.start();
 
-        timer  = new KasparovTimer(this);
+        timer = new KasparovTimer(this);
 
         Thread timerThread = new Thread(timer);
         timerThread.start();
 
+        try {
+            while (!isEnded()) {
+                KasparovMove move = moveQueue.take();
+
+                if (state == KasparovGameState.Black) {
+                    if (board.isMoveLegal(move.getMove())) {
+                        moves.put(move.getUuid(), move);
+                    }
+                }
+            }
+        } catch (InterruptedException e) {
+            //squash
+        }
     }
 
     public static void main(String[] args) {
