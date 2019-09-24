@@ -14,23 +14,16 @@ import java.util.HashMap;
 /**
  * Server class managing the connection between the server and the players
  */
-public class KasparovServer extends WebSocketServer {
+class KasparovServer extends WebSocketServer {
 
     private HashMap<Integer, KasparovInstance> instances;
 
-    private KasparovServer(InetSocketAddress address) {
+    KasparovServer(InetSocketAddress address) {
         super(address);
         this.instances = new HashMap<>();
     }
 
-    public static void main(String[] args) {
-        String host = "0.0.0.0";
-        int port = 8887;
-        KasparovServer server = new KasparovServer(new InetSocketAddress(host, port));
 
-        Thread thread = new Thread(server);
-        thread.start();
-    }
 
     void setConnected(WebSocket player) {
         player.send("{\"msgType\": \"InstanceConnected\"}");
