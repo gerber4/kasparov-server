@@ -14,13 +14,12 @@ public class KasparovTimer implements Runnable {
         this.engine = engine;
     }
 
-    public Lock getLock() {
+    Lock getLock() {
         return lock;
     }
 
     @Override
     public void run() {
-
         while (!engine.startGame()) {
             try {
                 Thread.sleep(15000);
@@ -50,10 +49,14 @@ public class KasparovTimer implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
         }
 
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            //squash
+        }
 
-        System.out.println("We made it!");
+        engine.endGame();
     }
 }

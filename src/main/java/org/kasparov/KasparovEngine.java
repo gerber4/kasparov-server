@@ -1,9 +1,8 @@
 package org.kasparov;
 
-import com.github.bhlangonijr.chesslib.move.*;
+import com.github.bhlangonijr.chesslib.move.Move;
 import org.java_websocket.WebSocket;
 
-import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -15,23 +14,28 @@ import java.util.stream.Collectors;
  */
 public class KasparovEngine implements Runnable {
 
-    private KasparovBoard board;
-
-    private KasparovServer server;
+    private KasparovInstance instance;
 
     private KasparovTimer timer;
 
     private KasparovGameState state;
 
+    private KasparovBoard board;
+
     private BlockingQueue<KasparovMove> moveQueue;
 
     private HashMap<WebSocket, KasparovMove> moves;
 
-    private KasparovEngine() {
+    KasparovEngine(KasparovInstance instance) {
+        this.instance = instance;
         this.state = KasparovGameState.Setup;
         this.board = new KasparovBoard();
-        this.moveQueue = new LinkedBlockingQueue<>();
         this.moves = new HashMap<>();
+        this.moveQueue = new LinkedBlockingQueue<>();
+    }
+
+    boolean isEnded() {
+        return state == KasparovGameState.WhiteWins || state == KasparovGameState.BlackWins || state == KasparovGameState.Stalemate;
     }
 
     KasparovGameState getState() {
@@ -40,10 +44,6 @@ public class KasparovEngine implements Runnable {
 
     char[][] getBoard() {
         return board.getAsArray();
-    }
-
-    boolean isEnded() {
-        return state == KasparovGameState.WhiteWins || state == KasparovGameState.BlackWins || state == KasparovGameState.Stalemate;
     }
 
     /**
@@ -74,13 +74,13 @@ public class KasparovEngine implements Runnable {
      * @return true if game started, false if game not ready to start
      */
     boolean startGame() {
-        if (server.getKasparov() == null) {
+        if (instance.getKasparov() == null) {
             return false;
-        } else if (server.getPlayers().isEmpty()) {
+        } else if (instance.getPlayers().isEmpty()) {
             return false;
         } else {
             state = KasparovGameState.White;
-            server.setState(state);
+            instance.setState(state);
             return true;
         }
     }
@@ -96,14 +96,13 @@ public class KasparovEngine implements Runnable {
         board.doMove(move.getMove());
 
         if (board.isMated()) {
-            System.out.println("THIS SHOULD BE HIT?!?!?");
             setWhiteWins();
         } else if (board.isDraw()) {
             setStalemate();
         } else {
             state = KasparovGameState.Black;
-            server.setState(state);
-            server.setBoard(board.getAsArray());
+            instance.setState(state);
+            instance.setBoard(board.getAsArray());
         }
 
         this.moveQueue = new LinkedBlockingQueue<>();
@@ -123,7 +122,7 @@ public class KasparovEngine implements Runnable {
                 .map(KasparovMove::getMove)
                 .collect(Collectors.toList());
 
-        Optional<Map.Entry<Move,Long>> optionalMove = moves.stream()
+        Optional<Map.Entry<Move, Long>> optionalMove = moves.stream()
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
                 .entrySet()
                 .stream()
@@ -143,14 +142,13 @@ public class KasparovEngine implements Runnable {
         board.doMove(move);
 
         if (board.isMated()) {
-            System.out.println("THIS SHOULD BE HIT?!?!?");
             setBlackWins();
         } else if (board.isDraw()) {
             setStalemate();
         } else {
             state = KasparovGameState.White;
-            server.setState(state);
-            server.setBoard(board.getAsArray());
+            instance.setState(state);
+            instance.setBoard(board.getAsArray());
         }
 
     }
@@ -163,8 +161,8 @@ public class KasparovEngine implements Runnable {
             throw new IllegalStateException("setWhiteWins called when state is not white");
         }
         state = KasparovGameState.WhiteWins;
-        server.setState(state);
-        server.setBoard(board.getAsArray());
+        instance.setState(state);
+        instance.setBoard(board.getAsArray());
     }
 
     /**
@@ -175,32 +173,30 @@ public class KasparovEngine implements Runnable {
             throw new IllegalStateException("setBlackWins called when state is not black");
         }
         state = KasparovGameState.BlackWins;
-        server.setState(state);
-        server.setBoard(board.getAsArray());
+        instance.setState(state);
+        instance.setBoard(board.getAsArray());
     }
 
     /**
-     * Transition to stalemate state
+     * Transition to the stalemate state
      */
     private void setStalemate() {
         state = KasparovGameState.Stalemate;
-        server.setState(state);
-        server.setBoard(board.getAsArray());
+        instance.setState(state);
+        instance.setBoard(board.getAsArray());
+    }
+
+
+    void endGame() {
+        instance.endGame();
     }
 
 
     /**
-     * Sets up all the required threads, and then manages all incoming moves
+     * Start the timer thread, and then consume all incoming moves
      */
     @Override
     public void run() {
-        String host = "localhost";
-        int port = 8887;
-        server = new KasparovServer(new InetSocketAddress(host, port), this);
-
-        Thread serverThread = new Thread(server);
-        serverThread.start();
-
         timer = new KasparovTimer(this);
 
         Thread timerThread = new Thread(timer);
@@ -212,18 +208,12 @@ public class KasparovEngine implements Runnable {
 
                 if (state == KasparovGameState.Black) {
                     if (board.isMoveLegal(move.getMove())) {
-                        moves.put(move.getUuid(), move);
+                        moves.put(move.getPlayer(), move);
                     }
                 }
             }
         } catch (InterruptedException e) {
             //squash
         }
-    }
-
-    public static void main(String[] args) {
-        KasparovEngine engine = new KasparovEngine();
-        Thread thread = new Thread(engine);
-        thread.start();
     }
 }
