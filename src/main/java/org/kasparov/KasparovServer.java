@@ -8,7 +8,7 @@ import org.java_websocket.server.WebSocketServer;
 
 import java.net.InetSocketAddress;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.HashMap;
 
 
 /**
@@ -16,97 +16,102 @@ import java.util.HashSet;
  */
 public class KasparovServer extends WebSocketServer {
 
-    private KasparovEngine engine;
+    private HashMap<Integer, KasparovInstance> instances;
 
-    private WebSocket kasparov;
-
-    private Collection<WebSocket> players;
-
-    KasparovServer(InetSocketAddress address, KasparovEngine engine) {
+    private KasparovServer(InetSocketAddress address) {
         super(address);
-        this.engine = engine;
-        this.players = new HashSet<>();
+        this.instances = new HashMap<>();
     }
 
-    WebSocket getKasparov() {
-        return kasparov;
+    public static void main(String[] args) {
+        String host = "0.0.0.0";
+        int port = 8887;
+        KasparovServer server = new KasparovServer(new InetSocketAddress(host, port));
+
+        Thread thread = new Thread(server);
+        thread.start();
     }
 
-    Collection<WebSocket> getPlayers() {
-        return players;
+    void setConnected(WebSocket player) {
+        player.send("{\"msgType\": \"InstanceConnected\"}");
     }
 
-    void setState(KasparovGameState state) {
+    void setAsKasparov(WebSocket kasparov) {
+        kasparov.send("{\"msgType\": \"SetPlayer\", \"msg\": {\"player\": \"Kasparov\"}}");
+    }
+
+    void setAsWorld(WebSocket player) {
+        player.send("{\"msgType\": \"SetPlayer\", \"msg\": {\"player\": \"World\"}}");
+    }
+
+    void setState(KasparovGameState state, WebSocket player) {
         String message = String.format("{\"msgType\": \"SetState\", \"msg\": {\"state\": \"%s\"}}", state.toString());
-        broadcast(message);
+        player.send(message);
     }
 
-    private void setState(WebSocket conn, KasparovGameState state) {
+    void setState(KasparovGameState state, Collection<WebSocket> players) {
         String message = String.format("{\"msgType\": \"SetState\", \"msg\": {\"state\": \"%s\"}}", state.toString());
-        conn.send(message);
+        broadcast(message, players);
     }
 
-    void setBoard(char[][] boardArray) {
+    void setBoard(char[][] boardArray, WebSocket player) {
         String boardJSON = new Gson().toJson(boardArray);
         String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", boardJSON);
-        broadcast(message);
+        player.send(message);
     }
 
-    private void setBoard(WebSocket conn, char[][] boardArray) {
+    void setBoard(char[][] boardArray, Collection<WebSocket> players) {
         String boardJSON = new Gson().toJson(boardArray);
         String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", boardJSON);
-        conn.send(message);
+        broadcast(message, players);
+    }
+
+    void endGame(Integer gameId, WebSocket kasparov, Collection<WebSocket> players) {
+        instances.remove(gameId);
+        kasparov.close();
+        for (WebSocket player : players) {
+            player.close();
+        }
     }
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         System.out.println("new connection to " + conn.getRemoteSocketAddress());
-        if (kasparov == null) {
-            kasparov = conn;
-            conn.send("{\"msgType\": \"SetPlayer\", \"msg\": {\"player\": \"Kasparov\"}}");
-        } else {
-            players.add(conn);
-            conn.send("{\"msgType\": \"SetPlayer\", \"msg\": {\"player\": \"World\"}}");
-
-        }
-
-        setState(conn, engine.getState());
-        setBoard(conn, engine.getBoard());
     }
-
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        System.out.println("closed " + conn.getRemoteSocketAddress() + " with exit code " + code + " additional info: " + reason);
-        if (kasparov == conn) {
-            throw new IllegalStateException("RIP KASPAROV QUIT :,(");
-        } else {
-            players.remove(conn);
-        }
+       System.out.println("closed " + conn.getRemoteSocketAddress() + " with exit code " + code + " additional info: " + reason);
     }
 
     @Override
-    public void onMessage(WebSocket conn, String messageString) {
-        System.out.println("received message from " + conn.getRemoteSocketAddress() + ": " + messageString);
-        JsonObject message = new Gson().fromJson(messageString, JsonObject.class);
+    public void onMessage(WebSocket conn, String message) {
+        System.out.println("received message from " + conn.getRemoteSocketAddress() + ": " + message);
+        JsonObject json = new Gson().fromJson(message, JsonObject.class);
 
-        String msgType = message.get("msgType").getAsString();
+        String msgType = json.get("msgType").getAsString();
+        Integer gameID = json.get("gameID").getAsInt();
 
-        if (msgType.equals("SendMove")) {
-            String san = message.get("msg").getAsJsonObject().get("move").getAsString();
-            KasparovGameState state = engine.getState();
-            KasparovMove move = new KasparovMove(conn, san, state);
-
-            if (conn == kasparov) {
-                engine.makeMoveKasparov(move);
+        if (msgType.equals("ConnectInstance")) {
+            if (instances.containsKey(gameID)) {
+                KasparovInstance instance = instances.get(gameID);
+                instance.addPlayer(conn);
             } else {
-                engine.makeMoveWorld(conn, move);
+                KasparovInstance instance = new KasparovInstance(gameID, this);
+                instances.put(gameID, instance);
+
+                instance.addPlayer(conn);
             }
+        } else if (msgType.equals("Move")) {
+            KasparovInstance instance = instances.get(gameID);
+
+            String SAN = json.get("msg").getAsJsonObject().get("move").getAsString();
+
+            instance.makeMove(conn, SAN);
 
         } else {
             throw new IllegalStateException("Unknown msgType: " + msgType);
         }
-
     }
 
     @Override
@@ -117,6 +122,4 @@ public class KasparovServer extends WebSocketServer {
     @Override
     public void onStart() {
     }
-
-
 }
