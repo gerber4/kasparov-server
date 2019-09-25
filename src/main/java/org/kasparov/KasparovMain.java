@@ -7,6 +7,7 @@ public class KasparovMain {
         String host = "0.0.0.0";
         int port = 8080;
         KasparovServer server = new KasparovServer(new InetSocketAddress(host, port));
+        server.setConnectionLostTimeout( 0 );
 
         Thread thread = new Thread(server);
         thread.start();
