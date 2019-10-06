@@ -25,7 +25,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>org.kasparov.KasparovMain</mainClass>
+                            <mainClass>org.kasparov.Main</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>
@@ -50,7 +50,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>org.kasparov.KasparovMain</mainClass>
+                            <mainClass>org.kasparov.Main</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

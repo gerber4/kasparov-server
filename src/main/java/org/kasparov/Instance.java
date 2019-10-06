@@ -1,6 +1,7 @@
 package org.kasparov;
 
 import org.java_websocket.WebSocket;
+import org.kasparov.message.*;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -8,24 +9,24 @@ import java.util.HashSet;
 /**
  * Class managing all the state of an instance of kasparov
  */
-class KasparovInstance {
+class Instance {
 
     private Integer gameId;
 
-    private KasparovServer server;
+    private MessageHandler handler;
 
-    private KasparovEngine engine;
+    private KasparovVsTheWorld engine;
 
     private WebSocket kasparov;
 
     private Collection<WebSocket> players;
 
-    KasparovInstance(Integer gameId, KasparovServer server) {
+    Instance(Integer gameId, MessageHandler handler) {
         this.gameId = gameId;
-        this.server = server;
+        this.handler = handler;
         this.players = new HashSet<>();
 
-        this.engine = new KasparovEngine(this);
+        this.engine = new KasparovVsTheWorld(this);
         Thread engineThread = new Thread(this.engine);
         engineThread.start();
     }
@@ -38,32 +39,34 @@ class KasparovInstance {
         return players;
     }
 
-    void setState(KasparovGameState state) {
-        server.setState(state, kasparov);
-        server.setState(state, players);
+    void setState(GameState state) {
+        Message message = new SetStateMessage(state);
+        handler.sendMessage(message, kasparov);
+        handler.sendMessage(message, players);
     }
 
     void setBoard(char[][] board) {
-        server.setBoard(board, kasparov);
-        server.setBoard(board, players);
+        Message message = new SetBoardMessage(board);
+        handler.sendMessage(message, kasparov);
+        handler.sendMessage(message, players);
     }
 
     void addPlayer(WebSocket player) {
         if (kasparov == null) {
             kasparov = player;
-            server.setAsKasparov(kasparov);
+            handler.sendMessage(new SetPlayerMessage(PlayerType.Kasparov), player);
         } else {
             players.add(player);
-            server.setAsWorld(player);
+            handler.sendMessage(new SetPlayerMessage(PlayerType.World), player);
         }
 
-        server.setConnected(player);
-        server.setState(engine.getState(), player);
-        server.setBoard(engine.getBoard(), player);
+        handler.sendMessage(new InstanceConnectedMessage(), player);
+        handler.sendMessage(new SetStateMessage(engine.getState()), player);
+        handler.sendMessage(new SetBoardMessage(engine.getBoard()), player);
     }
 
     void makeMove(WebSocket player, String SAN) {
-        KasparovGameState state = engine.getState();
+        GameState state = engine.getState();
 
         KasparovMove move = new KasparovMove(player, SAN, state);
         
@@ -75,6 +78,6 @@ class KasparovInstance {
     }
     
     void endGame() {
-        server.endGame(gameId, kasparov, players);
+        handler.endGame(gameId, kasparov, players);
     }
 }

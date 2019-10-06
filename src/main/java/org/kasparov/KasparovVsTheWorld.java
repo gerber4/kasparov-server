@@ -10,15 +10,15 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Main class of the Kasparov vs. the world game.
+ * Logic Kasparov vs. the world game.
  */
-public class KasparovEngine implements Runnable {
+public class KasparovVsTheWorld implements Runnable {
 
-    private KasparovInstance instance;
+    private Instance instance;
 
-    private KasparovTimer timer;
+    private Timer timer;
 
-    private KasparovGameState state;
+    private GameState state;
 
     private KasparovBoard board;
 
@@ -26,19 +26,19 @@ public class KasparovEngine implements Runnable {
 
     private HashMap<WebSocket, KasparovMove> moves;
 
-    KasparovEngine(KasparovInstance instance) {
+    KasparovVsTheWorld(Instance instance) {
         this.instance = instance;
-        this.state = KasparovGameState.Setup;
+        this.state = GameState.Setup;
         this.board = new KasparovBoard();
         this.moves = new HashMap<>();
         this.moveQueue = new LinkedBlockingQueue<>();
     }
 
     boolean isEnded() {
-        return state == KasparovGameState.WhiteWins || state == KasparovGameState.BlackWins || state == KasparovGameState.Stalemate;
+        return state == GameState.WhiteWins || state == GameState.BlackWins || state == GameState.Stalemate;
     }
 
-    KasparovGameState getState() {
+    GameState getState() {
         return state;
     }
 
@@ -50,7 +50,7 @@ public class KasparovEngine implements Runnable {
      * Method for selection a move for kasparov. Immediately ends turn if move is legal
      */
     void makeMoveKasparov(KasparovMove move) {
-        if (state == KasparovGameState.White) {
+        if (state == GameState.White) {
             if (board.isMoveLegal(move.getMove())) {
                 setTurnBlack(move);
             } else {
@@ -63,7 +63,7 @@ public class KasparovEngine implements Runnable {
      * Method for selecting a move for a non-kasparov player
      */
     void makeMoveWorld(WebSocket uuid, KasparovMove move) {
-        if (state == KasparovGameState.Black) {
+        if (state == GameState.Black) {
             moves.put(uuid, move);
         }
     }
@@ -79,7 +79,7 @@ public class KasparovEngine implements Runnable {
         } else if (instance.getPlayers().isEmpty()) {
             return false;
         } else {
-            state = KasparovGameState.White;
+            state = GameState.White;
             instance.setState(state);
             return true;
         }
@@ -89,7 +89,7 @@ public class KasparovEngine implements Runnable {
      * Transition from the white turn to the black turn
      */
     private void setTurnBlack(KasparovMove move) {
-        if (state != KasparovGameState.White) {
+        if (state != GameState.White) {
             throw new IllegalStateException("setTurnBlack called when state is not white");
         }
 
@@ -100,7 +100,7 @@ public class KasparovEngine implements Runnable {
         } else if (board.isDraw()) {
             setStalemate();
         } else {
-            state = KasparovGameState.Black;
+            state = GameState.Black;
             instance.setState(state);
             instance.setBoard(board.getAsArray());
         }
@@ -146,7 +146,7 @@ public class KasparovEngine implements Runnable {
         } else if (board.isDraw()) {
             setStalemate();
         } else {
-            state = KasparovGameState.White;
+            state = GameState.White;
             instance.setState(state);
             instance.setBoard(board.getAsArray());
         }
@@ -157,10 +157,10 @@ public class KasparovEngine implements Runnable {
      * Transition from white turn to white wins
      */
     private void setWhiteWins() {
-        if (state != KasparovGameState.White) {
+        if (state != GameState.White) {
             throw new IllegalStateException("setWhiteWins called when state is not white");
         }
-        state = KasparovGameState.WhiteWins;
+        state = GameState.WhiteWins;
         instance.setState(state);
         instance.setBoard(board.getAsArray());
     }
@@ -169,10 +169,10 @@ public class KasparovEngine implements Runnable {
      * Transition from black turn to black wins
      */
     private void setBlackWins() {
-        if (state != KasparovGameState.Black) {
+        if (state != GameState.Black) {
             throw new IllegalStateException("setBlackWins called when state is not black");
         }
-        state = KasparovGameState.BlackWins;
+        state = GameState.BlackWins;
         instance.setState(state);
         instance.setBoard(board.getAsArray());
     }
@@ -181,7 +181,7 @@ public class KasparovEngine implements Runnable {
      * Transition to the stalemate state
      */
     private void setStalemate() {
-        state = KasparovGameState.Stalemate;
+        state = GameState.Stalemate;
         instance.setState(state);
         instance.setBoard(board.getAsArray());
     }
@@ -197,7 +197,7 @@ public class KasparovEngine implements Runnable {
      */
     @Override
     public void run() {
-        timer = new KasparovTimer(this);
+        timer = new Timer(this);
 
         Thread timerThread = new Thread(timer);
         timerThread.start();
@@ -206,7 +206,7 @@ public class KasparovEngine implements Runnable {
             while (!isEnded()) {
                 KasparovMove move = moveQueue.take();
 
-                if (state == KasparovGameState.Black) {
+                if (state == GameState.Black) {
                     if (board.isMoveLegal(move.getMove())) {
                         moves.put(move.getPlayer(), move);
                     }

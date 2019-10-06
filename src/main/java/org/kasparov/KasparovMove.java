@@ -12,10 +12,10 @@ class KasparovMove {
 
     private Move move;
 
-    KasparovMove(WebSocket uuid, String SAN, KasparovGameState state) {
+    KasparovMove(WebSocket uuid, String SAN, GameState state) {
         this.player = uuid;
 
-        Side side = (state == KasparovGameState.White) ? Side.WHITE : Side.BLACK;
+        Side side = (state == GameState.White) ? Side.WHITE : Side.BLACK;
 
         this.move = new Move(SAN, side);
     }

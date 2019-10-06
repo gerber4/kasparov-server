@@ -1,6 +1,6 @@
 package org.kasparov;
 
-public enum KasparovGameState {
+public enum GameState {
     Setup,
     White,
     Black,

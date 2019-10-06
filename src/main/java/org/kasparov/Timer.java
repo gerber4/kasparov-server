@@ -3,13 +3,13 @@ package org.kasparov;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class KasparovTimer implements Runnable {
+public class Timer implements Runnable {
 
     private final Lock lock;
 
-    private KasparovEngine engine;
+    private KasparovVsTheWorld engine;
 
-    KasparovTimer(KasparovEngine engine) {
+    Timer(KasparovVsTheWorld engine) {
         this.lock = new ReentrantLock();
         this.engine = engine;
     }

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import org.kasparov.message.Message;
 
 import java.net.InetSocketAddress;
 import java.util.Collection;
@@ -14,52 +15,29 @@ import java.util.HashMap;
 /**
  * Server class managing the connection between the server and the players
  */
-class KasparovServer extends WebSocketServer {
+class Server extends WebSocketServer implements MessageHandler {
 
-    private HashMap<Integer, KasparovInstance> instances;
+    private HashMap<Integer, Instance> instances;
 
-    KasparovServer(InetSocketAddress address) {
+    private final Gson gson = new Gson();
+
+    Server(InetSocketAddress address) {
         super(address);
         this.instances = new HashMap<>();
     }
 
-
-
-    void setConnected(WebSocket player) {
-        player.send("{\"msgType\": \"InstanceConnected\"}");
+    @Override
+    public void sendMessage(Message message, WebSocket player) {
+        player.send(gson.toJson(message));
     }
 
-    void setAsKasparov(WebSocket kasparov) {
-        kasparov.send("{\"msgType\": \"SetPlayer\", \"msg\": {\"player\": \"Kasparov\"}}");
+    @Override
+    public void sendMessage(Message message, Collection<WebSocket> players) {
+        broadcast(gson.toJson(message), players);
     }
 
-    void setAsWorld(WebSocket player) {
-        player.send("{\"msgType\": \"SetPlayer\", \"msg\": {\"player\": \"World\"}}");
-    }
-
-    void setState(KasparovGameState state, WebSocket player) {
-        String message = String.format("{\"msgType\": \"SetState\", \"msg\": {\"state\": \"%s\"}}", state.toString());
-        player.send(message);
-    }
-
-    void setState(KasparovGameState state, Collection<WebSocket> players) {
-        String message = String.format("{\"msgType\": \"SetState\", \"msg\": {\"state\": \"%s\"}}", state.toString());
-        broadcast(message, players);
-    }
-
-    void setBoard(char[][] boardArray, WebSocket player) {
-        String boardJSON = new Gson().toJson(boardArray);
-        String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", boardJSON);
-        player.send(message);
-    }
-
-    void setBoard(char[][] boardArray, Collection<WebSocket> players) {
-        String boardJSON = new Gson().toJson(boardArray);
-        String message = String.format("{\"msgType\": \"SetBoard\", \"msg\": {\"board\": %s}}", boardJSON);
-        broadcast(message, players);
-    }
-
-    void endGame(Integer gameId, WebSocket kasparov, Collection<WebSocket> players) {
+    @Override
+    public void endGame(Integer gameId, WebSocket kasparov, Collection<WebSocket> players) {
         instances.remove(gameId);
         kasparov.close();
         for (WebSocket player : players) {
@@ -87,16 +65,16 @@ class KasparovServer extends WebSocketServer {
 
         if (msgType.equals("ConnectInstance")) {
             if (instances.containsKey(gameID)) {
-                KasparovInstance instance = instances.get(gameID);
+                Instance instance = instances.get(gameID);
                 instance.addPlayer(conn);
             } else {
-                KasparovInstance instance = new KasparovInstance(gameID, this);
+                Instance instance = new Instance(gameID, this);
                 instances.put(gameID, instance);
 
                 instance.addPlayer(conn);
             }
         } else if (msgType.equals("Move")) {
-            KasparovInstance instance = instances.get(gameID);
+            Instance instance = instances.get(gameID);
 
             String SAN = json.get("msg").getAsJsonObject().get("move").getAsString();
 
